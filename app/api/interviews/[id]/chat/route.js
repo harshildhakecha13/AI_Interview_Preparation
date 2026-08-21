@@ -1,0 +1,109 @@
+import { NextResponse } from "next/server";
+import { auth, currentUser } from "@/utils/auth";
+import dbConnect from "@/utils/db";
+import { UserAnswer } from "@/utils/schema";
+import { createChatSession } from "@/utils/GeminiAIModal";
+import { rateLimit } from "@/utils/rateLimit";
+
+// POST /api/interviews/[id]/chat — Dynamic conversational 1-on-1 interview response generator
+export async function POST(request, { params }) {
+  try {
+    const { userId } = await auth();
+    const user = await currentUser();
+    if (!userId || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = params;
+    const body = await request.json();
+    const { jobPosition, jobDesc, jobExperience, conversationHistory, lastUserAnswer } = body;
+
+    // Rate limit: 40 chat turns per 5 minutes per user
+    const rl = rateLimit(`chat-interview:${userId}`, { limit: 40, windowMs: 5 * 60_000 });
+    if (!rl.success) {
+      return NextResponse.json(
+        { error: "Too many requests. Please slow down." },
+        { status: 429, headers: { "Retry-After": String(Math.ceil((rl.resetAt - Date.now()) / 1000)) } }
+      );
+    }
+
+    // Build adaptive conversational prompt
+    const systemPrompt = `You are a real, friendly, yet rigorous Senior Technical Interviewer conducting a live 1-on-1 voice interview.
+Job Role: ${jobPosition || "Software Engineer"}
+Tech Stack / Description: ${jobDesc || "General Software Engineering"}
+Experience Level: ${jobExperience || "2"} Years
+
+Your goal is to conduct a natural, unscripted, dynamic conversational interview. 
+Guidelines for your response:
+1. Briefly acknowledge or give quick feedback on the candidate's last answer (1 natural sentence).
+2. If their answer was incomplete or interesting, ask a quick relevant follow-up question, OR transition naturally to the next key topic for this job role.
+3. Keep your spoken response natural, conversational, and concise (2 to 3 sentences maximum), suitable for text-to-speech. Do not output markdown, bullet points, or code blocks.
+4. Also evaluate the last candidate response objectively for technical accuracy and communication.
+
+Respond strictly in this JSON format:
+{
+  "aiSpeech": "Nice explanation of React state! Now, how do you handle asynchronous side effects like data fetching in your components?",
+  "rating": 7.5,
+  "feedback": "Good answer on state management, but should mention useEffect dependencies.",
+  "isInterviewComplete": false
+}`;
+
+    const chatSession = createChatSession();
+    
+    // Construct conversation string for context
+    const historyText = (conversationHistory || [])
+      .map(item => `${item.sender === "ai" ? "Interviewer" : "Candidate"}: ${item.text}`)
+      .join("\n");
+
+    const fullPrompt = `${systemPrompt}\n\nRecent Interview Conversation History:\n${historyText}\n\nCandidate's Latest Spoken Answer:\n"${lastUserAnswer}"\n\nGenerate the next conversational interviewer response:`;
+
+    const aiResult = await chatSession.sendMessage(fullPrompt);
+    let responseText = aiResult.response.text();
+
+    const cleanedResponse = responseText
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
+      .trim();
+
+    let chatJson;
+    try {
+      chatJson = JSON.parse(cleanedResponse);
+    } catch {
+      chatJson = {
+        aiSpeech: "Thank you for that response. Can you elaborate a bit more on how you apply this in your real projects?",
+        rating: 6,
+        feedback: "Response recorded.",
+        isInterviewComplete: false
+      };
+    }
+
+    // Persist answer and evaluation record into DB if user answered something meaningful
+    if (lastUserAnswer && lastUserAnswer.trim().length > 3) {
+      await dbConnect();
+      const userEmail = user.primaryEmailAddress?.emailAddress ?? "";
+      const createdAt = new Date().toISOString().split("T")[0];
+
+      await UserAnswer.create({
+        mockIdRef: id,
+        question: conversationHistory?.filter(m => m.sender === "ai")?.slice(-1)[0]?.text || "Conversational Question",
+        correctAns: "Dynamic Conversational Response",
+        userAns: lastUserAnswer,
+        feedback: chatJson.feedback || "Evaluated during live conversational session.",
+        rating: String(chatJson.rating || "6"),
+        userEmail,
+        createdAt,
+      });
+    }
+
+    return NextResponse.json({
+      aiSpeech: chatJson.aiSpeech,
+      rating: chatJson.rating,
+      feedback: chatJson.feedback,
+      isInterviewComplete: chatJson.isInterviewComplete || false
+    });
+
+  } catch (error) {
+    console.error("[POST /api/interviews/[id]/chat]", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

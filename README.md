@@ -20,11 +20,13 @@ To get started with the AI-Powered Mock Interview Platform, follow these steps:
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/modamaan/Ai-mock-Interview.git
+   git clone https://github.com/harshildhakecha13/AI-Interview-Preparation.git
+   ```
 
 2. Navigate to the project directory:
    ```bash
-   cd ai-mock-interview
+   cd AI-Interview-Preparation
+   ```
 
 3. Install dependencies by running: `npm install` or `yarn install`
 
@@ -47,15 +49,3 @@ To use the AI-Powered Mock Interview Platform, follow these guidelines:
 - Receive Feedback: After completing the interview, get detailed feedback and insights to improve.
 - Review Recent Interviews: Access your most recent interviews directly from the home page for quick review and continued improvement.
 
-## Contributing
-Contributions are welcome! If you'd like to contribute to this project, please follow these steps:
-1. Fork this repository.
-2. Create a new branch for your feature or bug fix.
-3. Make your changes and commit them to your branch.
-4. Push your changes to your forked repository.
-5. Submit a pull request to the main repository.
-
-
-## Support
-
-Show your support by 🌟 the project!!

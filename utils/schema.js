@@ -53,74 +53,7 @@ const UserAnswerSchema = new mongoose.Schema({
 });
 export const UserAnswer = getModel("UserAnswer", UserAnswerSchema);
 
-// 5. Course Schema (Language Prep Courses)
-const CourseSchema = new mongoose.Schema({
-  id: { type: Number, required: true, unique: true }, // custom serial ID
-  title: { type: String, required: true },
-  imageSrc: { type: String, required: true }
-});
-export const Course = getModel("Course", CourseSchema);
-
-// 6. Unit Schema
-const UnitSchema = new mongoose.Schema({
-  id: { type: Number, required: true, unique: true },
-  title: { type: String, required: true },
-  description: { type: String, required: true },
-  courseId: { type: Number, required: true },
-  order: { type: Number, required: true }
-});
-export const Unit = getModel("Unit", UnitSchema);
-
-// 7. Lesson Schema
-const LessonSchema = new mongoose.Schema({
-  id: { type: Number, required: true, unique: true },
-  title: { type: String, required: true },
-  unitId: { type: Number, required: true },
-  order: { type: Number, required: true }
-});
-export const Lesson = getModel("Lesson", LessonSchema);
-
-// 8. Challenge Schema
-const ChallengeSchema = new mongoose.Schema({
-  id: { type: Number, required: true, unique: true },
-  lessonId: { type: Number, required: true },
-  type: { type: String, required: true, enum: ["SELECT", "ASSIST"] },
-  duoQuestion: { type: String, required: true },
-  order: { type: Number, required: true }
-});
-export const Challenge = getModel("Challenge", ChallengeSchema);
-
-// 9. Challenge Options Schema
-const ChallengeOptionSchema = new mongoose.Schema({
-  id: { type: Number, required: true, unique: true },
-  challengeId: { type: Number, required: true },
-  text: { type: String, required: true },
-  correct: { type: Boolean, required: true },
-  imageSrc: { type: String },
-  audioSrc: { type: String }
-});
-export const ChallengeOption = getModel("ChallengeOption", ChallengeOptionSchema);
-
-// 10. Challenge Progress Schema
-const ChallengeProgressSchema = new mongoose.Schema({
-  userId: { type: String, required: true },
-  challengeId: { type: Number, required: true },
-  completed: { type: Boolean, default: false }
-});
-export const ChallengeProgress = getModel("ChallengeProgress", ChallengeProgressSchema);
-
-// 11. User Progress Schema
-const UserProgressSchema = new mongoose.Schema({
-  userId: { type: String, required: true, unique: true },
-  userName: { type: String, default: "User" },
-  userImageSrc: { type: String, default: "/logo.svg" },
-  activeCourseId: { type: Number },
-  hearts: { type: Number, default: 5 },
-  points: { type: Number, default: 0 }
-});
-export const UserProgress = getModel("UserProgress", UserProgressSchema);
-
-// 12. Newsletter Schema
+// 5. Newsletter Schema
 const NewsletterSchema = new mongoose.Schema({
   newName: { type: String },
   newEmail: { type: String },

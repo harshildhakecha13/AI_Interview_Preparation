@@ -3,7 +3,7 @@ import { jwtVerify } from "jose";
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
-const protectedPaths = ["/dashboard", "/forum"];
+const protectedPaths = ["/dashboard"];
 const authPaths = ["/sign-in", "/sign-up"];
 
 export async function middleware(request) {

@@ -1,13 +1,10 @@
 export default function sitemap() {
-  const baseUrl = "https://ai-mock-interview.vercel.app"; // Update this with your actual production domain
-
   return [
     {
-      url: baseUrl,
+      url: "http://localhost:3000",
       lastModified: new Date(),
       changeFrequency: "monthly",
       priority: 1,
     },
-    // Add other public pages here if any are created in the future
   ];
 }

@@ -7,17 +7,19 @@ import Link from "next/link";
 import { WebCamContext } from "../../layout";
 
 const Interview = ({ params }) => {
+  const unwrappedParams = (params && typeof params.then === "function") ? React.use(params) : params;
+  const interviewId = unwrappedParams?.interviewId;
   const { webCamEnabled, setWebCamEnabled } = useContext(WebCamContext);
   const [interviewData, setInterviewData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchInterviewDetails();
-  }, []);
+  }, [interviewId]);
 
   const fetchInterviewDetails = async () => {
     try {
-      const res = await fetch(`/api/interviews/${params.interviewId}`);
+      const res = await fetch(`/api/interviews/${interviewId}`);
       if (!res.ok) throw new Error("Failed to fetch interview");
       const data = await res.json();
       setInterviewData(data);
@@ -140,9 +142,14 @@ const Interview = ({ params }) => {
 
             {/* Launch Buttons */}
             <div className="space-y-3 pt-2">
-              <Link href={`/dashboard/interview/${params.interviewId}/voice`} className="block">
-                <Button className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl py-6 font-bold shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 text-sm">
+              <Link href={`/dashboard/interview/${interviewId}/voice`} className="block">
+                <Button className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-2xl py-6 font-bold shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 text-sm">
                   <Mic className="w-4 h-4 animate-pulse text-emerald-400" /> Start 1-on-1 Live Voice Call <ArrowRight className="w-4 h-4" />
+                </Button>
+              </Link>
+              <Link href={`/dashboard/interview/${interviewId}/start`} className="block">
+                <Button variant="outline" className="w-full bg-slate-950/80 border-slate-800 hover:bg-slate-800 text-slate-300 rounded-2xl py-5 text-xs font-semibold flex items-center justify-center gap-2">
+                  <Video className="w-3.5 h-3.5 text-indigo-400" /> Self-Paced Step-by-Step Mode
                 </Button>
               </Link>
             </div>

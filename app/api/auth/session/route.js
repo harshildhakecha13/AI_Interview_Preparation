@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@/utils/auth";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const { userId } = await auth();

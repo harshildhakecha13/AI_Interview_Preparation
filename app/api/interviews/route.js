@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@/utils/auth";
 import dbConnect from "@/utils/db";
-import { MockInterview } from "@/utils/schema";
+import { MockInterview, Resume } from "@/utils/schema";
 import { createChatSession } from "@/utils/GeminiAIModal";
 import { rateLimit } from "@/utils/rateLimit";
 import { v4 as uuidv4 } from "uuid";
 
-// POST /api/interviews — generate questions via Gemini and save interview
+// POST /api/interviews — generate personalized questions via Gemini and save interview
 export async function POST(request) {
   try {
     const { userId } = await auth();
@@ -15,8 +15,8 @@ export async function POST(request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Rate limit: 5 new interviews per minute per user
-    const rl = rateLimit(`create-interview:${userId}`, { limit: 5, windowMs: 60_000 });
+    // Rate limit: 10 new interviews per minute per user
+    const rl = rateLimit(`create-interview:${userId}`, { limit: 10, windowMs: 60_000 });
     if (!rl.success) {
       return NextResponse.json(
         { error: "Too many requests. Please wait before creating another interview." },
@@ -25,11 +25,24 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { jobPosition, jobDesc, jobExperience } = body;
+    const {
+      jobPosition,
+      jobDesc,
+      jobExperience,
+      interviewType = "Technical",
+      difficulty = "Medium",
+      questionsCount = 5,
+      duration = "20 min",
+      resumeUsed = true,
+      jdUsed = false,
+      jobDescriptionFull = "",
+      voiceEnabled = true,
+      cameraEnabled = true
+    } = body;
 
     // Validate
-    if (!jobPosition?.trim() || !jobDesc?.trim() || !jobExperience?.trim()) {
-      return NextResponse.json({ error: "All fields are required" }, { status: 400 });
+    if (!jobPosition?.trim() || !jobDesc?.trim() || !jobExperience?.toString().trim()) {
+      return NextResponse.json({ error: "Job role, description/tech stack, and experience are required" }, { status: 400 });
     }
     const expNum = parseInt(jobExperience);
     if (isNaN(expNum) || expNum < 0 || expNum > 50) {
@@ -39,32 +52,63 @@ export async function POST(request) {
       );
     }
 
-    // Sanitize
+    // Sanitize inputs
     const sanitize = (str) =>
-      str.replace(/[<>{}]/g, "").trim().substring(0, 500);
+      str ? str.replace(/[<>{}]/g, "").trim().substring(0, 4000) : "";
     const position = sanitize(jobPosition);
     const description = sanitize(jobDesc);
-    const experience = sanitize(jobExperience);
+    const experience = sanitize(String(jobExperience));
+    const fullJd = sanitize(jobDescriptionFull);
 
-    // Generate questions with Gemini
-    const prompt = `Generate 5 interview questions and answers for:
-Job Position: ${position}
-Job Description: ${description}
-Years of Experience: ${experience}
+    await dbConnect();
+    const userEmail = user.primaryEmailAddress?.emailAddress?.toLowerCase();
 
-Please provide a valid JSON array with this exact format:
+    // Fetch candidate resume if available
+    let resumeContext = "";
+    if (resumeUsed) {
+      const resume = await Resume.findOne({ userEmail });
+      if (resume) {
+        resumeContext = `
+CANDIDATE RESUME SUMMARY:
+Name: ${resume.personal?.name || user.username}
+Current Role: ${resume.professional?.currentRole || position}
+Years of Experience: ${resume.professional?.totalExperience || experience}
+Skills: ${JSON.stringify(resume.skills || {})}
+Recent Projects: ${JSON.stringify((resume.projects || []).slice(0, 3))}
+Recent Experience: ${JSON.stringify((resume.experience || []).slice(0, 2))}
+Interview-Worthy Claims: ${JSON.stringify((resume.insights?.interviewWorthyClaims || []).map(c => c.claim))}
+`;
+      }
+    }
+
+    const totalQuestions = Math.min(Math.max(parseInt(questionsCount) || 5, 3), 15);
+
+    // Dynamic prompt with Resume + JD + Difficulty + Interview Type
+    const prompt = `You are a Principal Hiring Engineer and Director of Talent conducting an elite mock interview.
+Target Job Position: ${position}
+Tech Stack / Description: ${description}
+${fullJd ? `Full Job Description Requirements:\n${fullJd}\n` : ""}
+Experience Level: ${experience} Years
+Interview Track: ${interviewType} (e.g. Technical, Behavioral, System Design, Coding, HR, Mixed)
+Interview Difficulty: ${difficulty} (Easy, Medium, Hard, Expert)
+${resumeContext ? `${resumeContext}\nCRITICAL INSTRUCTION: You have read the candidate's resume above! Formulate questions directly targeting their actual claimed projects, technologies, and achievements. Instead of asking basic textbook questions (e.g. "What is React?"), ask realistic, senior-level situational questions (e.g. "In your e-commerce project with React and Node, how did you architect state synchronization and caching?").` : "Formulate realistic, high-signal engineering interview questions reflecting this seniority and difficulty level."}
+
+Generate exactly ${totalQuestions} interview questions and ideal answers.
+Provide a valid JSON array with this exact schema:
 [
   {
-    "Question": "Your interview question here?",
-    "Answer": "Your detailed answer here."
+    "Question": "The specific question text here?",
+    "Answer": "A comprehensive, high-standard answer outlining key concepts, trade-offs, and expected candidate depth.",
+    "category": "${interviewType}",
+    "topic": "e.g. System Scalability / Frontend State / Concurrency"
   }
 ]
 
-Keep questions professional and relevant to the job requirements.`;
+Do NOT return markdown backticks or commentary. Only return the raw JSON array.`;
 
     const session = createChatSession();
-    const aiResult = await session.sendMessage(prompt);
-    let responseText = aiResult.response.text();
+    const aiResult = await session.sendMessage({ message: prompt });
+    let responseText = aiResult.text;
 
     // Clean and validate JSON
     const cleanedResponse = responseText
@@ -76,7 +120,8 @@ Keep questions professional and relevant to the job requirements.`;
     let parsedQuestions;
     try {
       parsedQuestions = JSON.parse(cleanedResponse);
-    } catch {
+    } catch (parseErr) {
+      console.warn("AI JSON Parse Error:", parseErr, cleanedResponse);
       return NextResponse.json(
         { error: "Failed to parse AI response. Please try again." },
         { status: 502 }
@@ -90,22 +135,10 @@ Keep questions professional and relevant to the job requirements.`;
       );
     }
 
-    for (const item of parsedQuestions) {
-      if (!item.Question || !item.Answer) {
-        return NextResponse.json(
-          { error: "Invalid question format from AI. Please try again." },
-          { status: 502 }
-        );
-      }
-    }
-
-    await dbConnect();
-
-    const userEmail = user.primaryEmailAddress?.emailAddress ?? "";
     const mockId = uuidv4();
     const createdAt = new Date().toISOString().split("T")[0];
 
-    await MockInterview.create({
+    const mockInterview = await MockInterview.create({
       mockId,
       jsonMockResp: cleanedResponse,
       jobPosition: position,
@@ -113,11 +146,26 @@ Keep questions professional and relevant to the job requirements.`;
       jobExperience: experience,
       createdBy: userEmail,
       createdAt,
+      interviewType,
+      difficulty,
+      duration,
+      questionsCount: parsedQuestions.length,
+      voiceEnabled: !!voiceEnabled,
+      cameraEnabled: !!cameraEnabled,
+      resumeUsed: !!resumeContext,
+      jdUsed: !!fullJd
     });
 
-    return NextResponse.json({ mockId }, { status: 201 });
+    return NextResponse.json({ mockId, interview: mockInterview }, { status: 201 });
   } catch (error) {
-    console.error("[POST /api/interviews]", error);
+    console.warn("[POST /api/interviews]", error);
+    const errMessage = error?.message || String(error);
+    if (errMessage.includes("API key not valid") || errMessage.includes("API_KEY_INVALID") || errMessage.includes("API key")) {
+      return NextResponse.json(
+        { error: "Your Gemini API Key is invalid or has not been configured yet. Please configure GEMINI_API_KEY in the environment settings." },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       { error: error?.message || "Failed to create interview. Please try again." },
       { status: 500 }

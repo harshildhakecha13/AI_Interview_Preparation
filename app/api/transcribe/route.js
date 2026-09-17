@@ -33,6 +33,13 @@ export async function POST(request) {
     return NextResponse.json({ transcription });
   } catch (error) {
     console.error("[POST /api/transcribe]", error);
+    const errMessage = error?.message || String(error);
+    if (errMessage.includes("API key not valid") || errMessage.includes("API_KEY_INVALID") || errMessage.includes("API key")) {
+      return NextResponse.json(
+        { error: "Your Gemini API Key is invalid or has not been configured yet. Please open the Settings menu (Gear icon) in the top-right corner of Google AI Studio and configure your GEMINI_API_KEY." },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       { error: "Transcription failed. Please try again." },
       { status: 500 }

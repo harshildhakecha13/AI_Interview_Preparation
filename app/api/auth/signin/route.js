@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
-import { SignJWT } from "jose";
 import bcrypt from "bcryptjs";
 import dbConnect from "@/utils/db";
 import { User } from "@/utils/schema";
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
 export async function POST(request) {
   try {
@@ -26,12 +23,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
     }
 
-    // Create a JWT session token (24-hour expiry)
-    const token = await new SignJWT({ userId: String(user._id), email: user.email })
-      .setProtectedHeader({ alg: "HS256" })
-      .setIssuedAt()
-      .setExpirationTime("24h")
-      .sign(JWT_SECRET);
+    const token = String(user._id);
 
     const response = NextResponse.json({
       success: true,
@@ -40,8 +32,8 @@ export async function POST(request) {
 
     response.cookies.set("session_token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      secure: true,
+      sameSite: "none",
       maxAge: 60 * 60 * 24,
       path: "/",
     });

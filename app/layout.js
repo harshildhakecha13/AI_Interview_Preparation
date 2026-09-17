@@ -18,12 +18,12 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={font.className}>
         <AuthProvider>
           <ThemeProvider
             attribute="class"
-            defaultTheme="white"
+            defaultTheme="system"
             enableSystem
             disableTransitionOnChange
           >

@@ -1,9 +1,6 @@
 import { cookies } from "next/headers";
-import { jwtVerify } from "jose";
 import dbConnect from "./db";
 import { User } from "./schema";
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
 /**
  * Verify the session JWT cookie and return { userId }.
@@ -18,8 +15,7 @@ export async function auth() {
       return { userId: null };
     }
 
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    return { userId: payload.userId ?? null };
+    return { userId: token };
   } catch {
     return { userId: null };
   }

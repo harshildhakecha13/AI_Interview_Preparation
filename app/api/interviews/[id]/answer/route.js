@@ -23,7 +23,7 @@ export async function POST(request, { params }) {
       );
     }
 
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
     const { question, correctAns, userAns } = body;
 
@@ -57,8 +57,8 @@ Respond ONLY with valid JSON in this exact structure:
 }`;
 
     const session = createChatSession();
-    const aiResult = await session.sendMessage(feedbackPrompt);
-    let responseText = aiResult.response.text();
+    const aiResult = await session.sendMessage({ message: feedbackPrompt });
+    let responseText = aiResult.text;
 
     const cleanedResponse = responseText
       .replace(/```json/gi, "")
@@ -101,6 +101,13 @@ Respond ONLY with valid JSON in this exact structure:
     });
   } catch (error) {
     console.error("[POST /api/interviews/[id]/answer]", error);
+    const errMessage = error?.message || String(error);
+    if (errMessage.includes("API key not valid") || errMessage.includes("API_KEY_INVALID") || errMessage.includes("API key")) {
+      return NextResponse.json(
+        { error: "Your Gemini API Key is invalid or has not been configured yet. Please open the Settings menu (Gear icon) in the top-right corner of Google AI Studio and configure your GEMINI_API_KEY." },
+        { status: 400 }
+      );
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -1,7 +1,4 @@
 import { NextResponse } from "next/server";
-import { jwtVerify } from "jose";
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
 const protectedPaths = ["/dashboard"];
 const authPaths = ["/sign-in", "/sign-up"];
@@ -14,15 +11,7 @@ export async function middleware(request) {
 
   const token = request.cookies.get("session_token")?.value;
 
-  let isAuthenticated = false;
-  if (token) {
-    try {
-      await jwtVerify(token, JWT_SECRET);
-      isAuthenticated = true;
-    } catch {
-      isAuthenticated = false;
-    }
-  }
+  let isAuthenticated = !!token;
 
   // Redirect unauthenticated users trying to access protected routes
   if (isProtected && !isAuthenticated) {

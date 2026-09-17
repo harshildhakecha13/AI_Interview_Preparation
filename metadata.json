@@ -1,0 +1,6 @@
+{
+  "name": "AI Mock Interview Prep",
+  "description": "Prepare for job interviews with dynamic AI-generated mock interview questions and real-time evaluation feedback.",
+  "requestFramePermissions": ["microphone", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

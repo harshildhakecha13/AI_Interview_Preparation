@@ -10,16 +10,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
 const page = ({ params }) => {
+  const unwrappedParams = (params && typeof params.then === "function") ? React.use(params) : params;
+  const pyqId = unwrappedParams?.pyqId;
   const [questionData, setQuestionData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     getQuestionDetails();
-  }, []);
+  }, [pyqId]);
 
   const getQuestionDetails = async () => {
     try {
-      const res = await fetch(`/api/questions/${params.pyqId}`);
+      const res = await fetch(`/api/questions/${pyqId}`);
       if (!res.ok) {
         throw new Error("Failed to fetch mock question details");
       }

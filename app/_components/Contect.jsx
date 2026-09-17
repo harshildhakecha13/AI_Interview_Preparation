@@ -1,5 +1,5 @@
 "use client";
-import { LoaderCircle } from "lucide-react";
+import { Loader2, Send, Mail, MessageSquare, User, Sparkles } from "lucide-react";
 import React, { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,7 @@ const Contect = () => {
         return;
       }
 
-      toast.success("Message sent successfully!");
+      toast.success("Message transmitted! Our team will respond shortly.");
       setName("");
       setEmail("");
       setMessage("");
@@ -48,55 +48,80 @@ const Contect = () => {
   };
 
   return (
-    <div className="container mx-auto text-center">
-      <h2 className="text-4xl font-bold text-gray-800">Get In Touch</h2>
-      <p className="mt-4 text-lg text-gray-600">
-        Have any questions? Reach out to us and we&apos;ll get back to you as
-        soon as possible.
-      </p>
-      <div className="mt-8">
-        <form onSubmit={onSubmit} className="max-w-xl mx-auto flex flex-col gap-4 text-left">
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="contact-name">Your Name</Label>
-            <Input
-              id="contact-name"
-              type="text"
-              placeholder="Jane Smith"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
+    <div className="max-w-3xl mx-auto text-center space-y-6">
+      <div className="space-y-2">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+          <Sparkles className="w-3.5 h-3.5" /> Direct Candidate Support
+        </div>
+        <h2 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
+          Get In Touch With Our Engineering Team
+        </h2>
+        <p className="text-slate-400 text-sm max-w-xl mx-auto">
+          Questions about voice calibration, company-specific tracks, or custom interview rubrics? Send us a note.
+        </p>
+      </div>
+
+      <div className="p-6 md:p-8 rounded-3xl bg-slate-900/60 border border-slate-800 backdrop-blur-xl shadow-2xl text-left">
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="contact-name" className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-indigo-400" /> Your Full Name
+              </Label>
+              <Input
+                id="contact-name"
+                type="text"
+                placeholder="Jane Smith"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="bg-slate-950/80 border-slate-800 text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 rounded-xl"
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="contact-email" className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-purple-400" /> Email Address
+              </Label>
+              <Input
+                id="contact-email"
+                type="email"
+                placeholder="jane@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="bg-slate-950/80 border-slate-800 text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 rounded-xl"
+                required
+              />
+            </div>
           </div>
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="contact-email">Your Email</Label>
-            <Input
-              id="contact-email"
-              type="email"
-              placeholder="jane@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="contact-message">Your Message</Label>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="contact-message" className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <MessageSquare className="w-3.5 h-3.5 text-emerald-400" /> Your Message
+            </Label>
             <Textarea
               id="contact-message"
               placeholder="How can we help you?"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={4}
+              className="bg-slate-950/80 border-slate-800 text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 rounded-xl resize-none"
               required
             />
           </div>
-          <Button type="submit" disabled={loading} className="w-full">
+
+          <Button
+            type="submit"
+            disabled={loading}
+            className="w-full py-6 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 text-sm"
+          >
             {loading ? (
               <>
-                <LoaderCircle className="animate-spin mr-2 h-4 w-4" />
-                Sending...
+                <Loader2 className="w-4 h-4 animate-spin" /> Transmitting Message...
               </>
             ) : (
-              "Send Message"
+              <>
+                <Send className="w-4 h-4" /> Send Message
+              </>
             )}
           </Button>
         </form>

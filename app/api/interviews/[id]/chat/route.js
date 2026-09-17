@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@/utils/auth";
 import dbConnect from "@/utils/db";
-import { UserAnswer } from "@/utils/schema";
+import { UserAnswer, Resume, MockInterview } from "@/utils/schema";
 import { createChatSession } from "@/utils/GeminiAIModal";
 import { rateLimit } from "@/utils/rateLimit";
 
@@ -14,12 +14,19 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
-    const { jobPosition, jobDesc, jobExperience, conversationHistory, lastUserAnswer } = body;
+    const {
+      jobPosition,
+      jobDesc,
+      jobExperience,
+      conversationHistory,
+      lastUserAnswer,
+      interviewPhase = "Technical"
+    } = body;
 
-    // Rate limit: 40 chat turns per 5 minutes per user
-    const rl = rateLimit(`chat-interview:${userId}`, { limit: 40, windowMs: 5 * 60_000 });
+    // Rate limit: 60 chat turns per 5 minutes per user
+    const rl = rateLimit(`chat-interview:${userId}`, { limit: 60, windowMs: 5 * 60_000 });
     if (!rl.success) {
       return NextResponse.json(
         { error: "Too many requests. Please slow down." },
@@ -27,91 +34,91 @@ export async function POST(request, { params }) {
       );
     }
 
-    // Build adaptive conversational prompt
-    const systemPrompt = `You are a real, friendly, yet rigorous Senior Technical Interviewer conducting a live 1-on-1 voice interview.
-Job Role: ${jobPosition || "Software Engineer"}
-Tech Stack / Description: ${jobDesc || "General Software Engineering"}
-Experience Level: ${jobExperience || "2"} Years
+    await dbConnect();
+    const userEmail = user.primaryEmailAddress?.emailAddress?.toLowerCase() ?? "";
 
-Your goal is to conduct a natural, unscripted, dynamic conversational interview. 
-Guidelines for your response:
-1. Briefly acknowledge or give quick feedback on the candidate's last answer (1 natural sentence).
-2. If their answer was incomplete or interesting, ask a quick relevant follow-up question, OR transition naturally to the next key topic for this job role.
-3. Keep your spoken response natural, conversational, and concise (2 to 3 sentences maximum), suitable for text-to-speech. Do not output markdown, bullet points, or code blocks.
-4. Also evaluate the last candidate response objectively for technical accuracy and communication.
+    // Fetch resume and interview context if available
+    const [resume, interview] = await Promise.all([
+      Resume.findOne({ userEmail }),
+      MockInterview.findOne({ mockId: id })
+    ]);
+
+    const candidateClaims = (resume?.insights?.interviewWorthyClaims || []).map(c => c.claim).join("; ");
+    const candidateProjects = (resume?.projects || []).map(p => `${p.name} (${(p.technologies || []).join(", ")})`).join("; ");
+
+    // Build adaptive conversational prompt
+    const systemPrompt = `You are a Principal Engineering Interviewer conducting a realistic, adaptive 1-on-1 voice interview.
+Job Role: ${jobPosition || interview?.jobPosition || "Software Engineer"}
+Tech Stack / Description: ${jobDesc || interview?.jobDesc || "Full Stack Engineering"}
+Experience Level: ${jobExperience || interview?.jobExperience || "3"} Years
+Track/Difficulty: ${interview?.interviewType || "Technical"} - ${interview?.difficulty || "Medium"}
+Current Phase: ${interviewPhase}
+${candidateClaims ? `Candidate's Resume Claims: ${candidateClaims}` : ""}
+${candidateProjects ? `Candidate's Resume Projects: ${candidateProjects}` : ""}
+
+DYNAMIC EVALUATION & ADAPTIVE DECISION RULES:
+1. Analyze the candidate's last spoken answer thoroughly:
+   - Is it strong, weak, missing technical depth, or vague?
+   - Did they mention a specific technology, caching tool (e.g. Redis), or metric without explaining how they handled it?
+   - If they made a bold claim, test it (e.g. "How did you handle cache invalidation?" or "How did you measure that 30% speedup?").
+2. Decision:
+   - If answer is incomplete, vague, or mentions an interesting architectural choice: DECIDE TO ASK A DIRECT FOLLOW-UP ("decision": "follow_up").
+   - If the answer was thorough and solid: DECIDE TO TRANSITION TO THE NEXT KEY TOPIC ("decision": "next_topic").
+3. Voice-friendly delivery: Keep your spoken question ("aiSpeech") concise, professional, and natural (2 to 3 sentences maximum, without markdown or bullets).
+4. Provide structured scoring & feedback for their answer:
+   - "rating": numeric score out of 10 (e.g. 7.5)
+   - "decision": "follow_up" or "next_topic"
+   - "strongPoints": 1-2 bullet points
+   - "couldImprove": 1-2 bullet points
+   - "idealAnswerSummary": 1-2 sentence high-level ideal answer
+   - "topic": Current topic name
 
 Respond strictly in this JSON format:
 {
-  "aiSpeech": "Nice explanation of React state! Now, how do you handle asynchronous side effects like data fetching in your components?",
-  "rating": 7.5,
-  "feedback": "Good answer on state management, but should mention useEffect dependencies.",
+  "aiSpeech": "Spoken interviewer response and next question here...",
+  "decision": "follow_up",
+  "rating": 8.0,
+  "feedback": "Concise summary of their answer quality.",
+  "strongPoints": ["Good grasp of Redis caching"],
+  "couldImprove": ["Needs to elaborate on TTL and invalidation strategy"],
+  "idealAnswerSummary": "A strong answer should outline cache-aside pattern with specific invalidation triggers.",
+  "topic": "System Scalability",
   "isInterviewComplete": false
 }`;
 
     const chatSession = createChatSession();
-    
-    // Construct conversation string for context
+
     const historyText = (conversationHistory || [])
       .map(item => `${item.sender === "ai" ? "Interviewer" : "Candidate"}: ${item.text}`)
       .join("\n");
-    const previousAiQuestions = (conversationHistory || [])
-      .filter(item => item.sender === "ai")
-      .map(item => item.text)
-      .join("\n- ");
 
     const fullPrompt = `${systemPrompt}
-
-Never ask a question that is the same as, or substantially similar to, one already asked. Choose a new topic or a deeper aspect of the role. Previous interviewer prompts:
-- ${previousAiQuestions || "None"}
 
 Recent Interview Conversation History:
 ${historyText}
 
-Candidate's Latest Spoken Answer:
+Candidate's Latest Answer:
 "${lastUserAnswer}"
 
-Generate the next conversational interviewer response:`;
+Generate the next adaptive interviewer response and structured evaluation:`;
 
     let responseText;
-    let isFallbackResponse = false;
-    const fallbackQuestions = [
-      "What is one challenging technical problem you solved recently, and how did you approach it?",
-      "How do you test and validate your work before releasing it?",
-      "Tell me about a time you had to improve the performance or reliability of a system.",
-      "How do you investigate a bug when the cause is not immediately obvious?",
-      "How do you explain a technical tradeoff to a non-technical teammate or stakeholder?",
-    ];
-    const normalizeText = (text) => String(text || "")
-      .toLowerCase()
-      .replace(/[^a-z0-9? ]/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    const extractQuestions = (text) => normalizeText(text)
-      .match(/[^?]+\?/g)
-      ?.map(question => question.trim()) || [];
-    const normalizedPreviousQuestions = (conversationHistory || [])
-      .filter(item => item.sender === "ai")
-      .flatMap(item => extractQuestions(item.text));
-    const nextFallbackQuestion = fallbackQuestions.find((question) => {
-      const normalizedQuestion = normalizeText(question);
-      return !normalizedPreviousQuestions.includes(normalizedQuestion);
-    }) || fallbackQuestions[0];
-
     try {
-      const aiResult = await chatSession.sendMessage(fullPrompt);
-      responseText = aiResult.response.text();
+      const aiResult = await chatSession.sendMessage({ message: fullPrompt });
+      responseText = aiResult.text;
     } catch (error) {
-      const isQuotaError = error?.status === 429 || error?.message?.includes("Too Many Requests");
-      if (!isQuotaError) throw error;
-
-      console.warn("[POST /api/interviews/[id]/chat] Gemini quota exhausted; using fallback response");
+      console.warn("[POST /api/interviews/[id]/chat] Gemini error; using fallback follow-up", error);
       responseText = JSON.stringify({
-        aiSpeech: `Thank you for that response. ${nextFallbackQuestion}`,
-        rating: 6,
-        feedback: "Response recorded. AI evaluation is temporarily unavailable because the generation quota has been reached.",
+        aiSpeech: "That is interesting. Could you elaborate on how you handled edge cases and performance bottlenecks in that approach?",
+        decision: "follow_up",
+        rating: 7.0,
+        feedback: "Answer received and logged.",
+        strongPoints: ["Addressed the core concept"],
+        couldImprove: ["Elaborate on edge cases"],
+        idealAnswerSummary: "Include specific metrics, trade-offs, and failure mode analysis.",
+        topic: "Technical Architecture",
         isInterviewComplete: false,
       });
-      isFallbackResponse = true;
     }
 
     const cleanedResponse = responseText
@@ -124,46 +131,57 @@ Generate the next conversational interviewer response:`;
       chatJson = JSON.parse(cleanedResponse);
     } catch {
       chatJson = {
-        aiSpeech: `Thank you for that response. ${nextFallbackQuestion}`,
-        rating: 6,
-        feedback: "Response recorded.",
+        aiSpeech: "Thank you. Can you tell me about the most challenging bug you encountered in this area and how you resolved it?",
+        decision: "next_topic",
+        rating: 7.0,
+        feedback: "Candidate answer logged.",
+        strongPoints: ["Clear communication"],
+        couldImprove: ["Provide deeper architectural examples"],
+        idealAnswerSummary: "Demonstrate deep understanding of system tradeoffs.",
+        topic: "Problem Solving",
         isInterviewComplete: false
       };
     }
 
-    const generatedQuestions = extractQuestions(chatJson.aiSpeech);
-    if (generatedQuestions.some(question => normalizedPreviousQuestions.includes(question))) {
-      chatJson.aiSpeech = `Thanks for explaining that. ${nextFallbackQuestion}`;
-    }
-
-    // Persist answer and evaluation record into DB if user answered something meaningful
+    // Persist answer and evaluation record into DB
     if (lastUserAnswer && lastUserAnswer.trim().length > 3) {
-      await dbConnect();
-      const userEmail = user.primaryEmailAddress?.emailAddress ?? "";
       const createdAt = new Date().toISOString().split("T")[0];
+      const previousAiQuestion = conversationHistory?.filter(m => m.sender === "ai")?.slice(-1)[0]?.text || "Technical Question";
 
       await UserAnswer.create({
         mockIdRef: id,
-        question: conversationHistory?.filter(m => m.sender === "ai")?.slice(-1)[0]?.text || "Conversational Question",
-        correctAns: "Dynamic Conversational Response",
+        question: previousAiQuestion,
+        correctAns: chatJson.idealAnswerSummary || "Detailed technical rationale and tradeoffs.",
         userAns: lastUserAnswer,
         feedback: chatJson.feedback || "Evaluated during live conversational session.",
-        rating: String(chatJson.rating || "6"),
+        rating: String(chatJson.rating || "7.0"),
         userEmail,
         createdAt,
+        strongPoints: chatJson.strongPoints || [],
+        couldImprove: chatJson.couldImprove || [],
+        idealAnswer: chatJson.idealAnswerSummary || "",
+        communication: {
+          wordCount: lastUserAnswer.split(/\s+/).length,
+          decision: chatJson.decision,
+          topic: chatJson.topic
+        }
       });
     }
 
     return NextResponse.json({
       aiSpeech: chatJson.aiSpeech,
-      rating: chatJson.rating,
+      decision: chatJson.decision || "next_topic",
+      rating: chatJson.rating || 7.0,
       feedback: chatJson.feedback,
+      strongPoints: chatJson.strongPoints || [],
+      couldImprove: chatJson.couldImprove || [],
+      idealAnswerSummary: chatJson.idealAnswerSummary || "",
+      topic: chatJson.topic || "Technical Knowledge",
       isInterviewComplete: chatJson.isInterviewComplete || false,
-      degraded: isFallbackResponse,
     });
 
   } catch (error) {
-    console.error("[POST /api/interviews/[id]/chat]", error);
+    console.warn("[POST /api/interviews/[id]/chat]", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

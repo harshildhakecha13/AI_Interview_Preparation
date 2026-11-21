@@ -71,6 +71,7 @@ export default function VoiceInterviewRoom({ params }) {
   const fullUserAnswerRef = useRef("");
   const silenceTimerRef = useRef(null);
   const handleDoneSpeakingRef = useRef(null);
+  const currentAudioRef = useRef(null);
   const isComponentMounted = useRef(true);
 
   // Timer effect
@@ -128,46 +129,98 @@ export default function VoiceInterviewRoom({ params }) {
 
   const currentPhaseIndex = Math.min(Math.floor(turnCount / 1.5), phases.length - 1);
 
-  // Helper: Speech Synthesis (TTS)
-  const speakAI = useCallback((text, onEndCallback) => {
+  // Helper: speech synthesis with instant browser TTS first to minimize delay after user answers.
+  // Gemini-generated AI audio remains available as a non-blocking fallback when browser TTS is unavailable.
+  const speakAI = useCallback(async (text, onEndCallback) => {
     if (isAiMuted) {
       if (onEndCallback) onEndCallback();
       return;
     }
 
-    if (!("speechSynthesis" in window)) {
-      if (onEndCallback) onEndCallback();
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.currentTime = 0;
+    }
+
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.02;
+      utterance.pitch = 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      const englishVoice = voices.find(v => v.lang.includes("en") && (v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Samantha")));
+      if (englishVoice) utterance.voice = englishVoice;
+
+      utterance.onstart = () => {
+        if (isComponentMounted.current) setSessionState("ai_speaking");
+      };
+
+      utterance.onend = () => {
+        if (isComponentMounted.current && onEndCallback) onEndCallback();
+      };
+
+      utterance.onerror = () => {
+        if (isComponentMounted.current && onEndCallback) onEndCallback();
+      };
+
+      window.speechSynthesis.speak(utterance);
       return;
     }
 
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.02;
-    utterance.pitch = 1.0;
-
-    const voices = window.speechSynthesis.getVoices();
-    const englishVoice = voices.find(v => v.lang.includes("en") && (v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Samantha")));
-    if (englishVoice) utterance.voice = englishVoice;
-
-    utterance.onstart = () => {
+    try {
       if (isComponentMounted.current) setSessionState("ai_speaking");
-    };
 
-    utterance.onend = () => {
-      if (isComponentMounted.current && onEndCallback) {
-        onEndCallback();
+      const response = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
+      });
+
+      if (!response.ok) {
+        throw new Error("AI voice generation failed");
       }
-    };
 
-    utterance.onerror = (e) => {
-      console.warn("TTS Event Note:", e.error || e);
+      const { audioBase64, mimeType } = await response.json();
+      if (!audioBase64) {
+        throw new Error("No audio payload returned by AI voice service");
+      }
+
+      const binary = atob(audioBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+
+      const blob = new Blob([bytes], { type: mimeType || "audio/wav" });
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      currentAudioRef.current = audio;
+
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        if (isComponentMounted.current && onEndCallback) onEndCallback();
+      };
+
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
+        if (isComponentMounted.current && onEndCallback) onEndCallback();
+      };
+
+      audio.play();
+    } catch (error) {
+      console.warn("AI TTS fallback triggered:", error);
       if (isComponentMounted.current && onEndCallback) onEndCallback();
-    };
-
-    window.speechSynthesis.speak(utterance);
+    }
   }, [isAiMuted]);
 
   const stopSpeechSynthesis = () => {
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.currentTime = 0;
+      currentAudioRef.current = null;
+    }
+
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }

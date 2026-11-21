@@ -1,10 +1,10 @@
-import { Nunito } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/ThemeProvider.tsx";
 import { AuthProvider } from "@/components/AuthProvider";
 
-const font = Nunito({ subsets: ["latin"] });
+const font = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata = {
   title: {

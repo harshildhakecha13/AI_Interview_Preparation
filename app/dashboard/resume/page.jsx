@@ -296,11 +296,9 @@ export default function ResumePage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Link href="/dashboard/job-match">
-                <Button size="sm" variant="outline" className="text-xs border-slate-700 bg-slate-900 text-slate-300 hover:text-white">
-                  Match Against Job Description <ChevronRight className="w-3.5 h-3.5 ml-1" />
-                </Button>
-              </Link>
+              <Button size="sm" variant="outline" className="text-xs border-slate-700 bg-slate-900 text-slate-300 hover:text-white" disabled>
+                Match Against Job Description <ChevronRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
             </div>
           </div>
 
